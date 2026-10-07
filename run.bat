@@ -10,6 +10,7 @@ REM    run.bat cli          -> headless (console only) generation
 REM    run.bat setup        -> install/check FFmpeg only, do not start the app
 REM    run.bat tts          -> install + start the FREE Piper narration server
 REM    run.bat tts install  -> install Piper only, do not start the server
+REM    run.bat proxy        -> start the local DeepSeek humanizer proxy (Python)
 REM
 REM  Everything the app needs is downloaded into a portable tools folder, so
 REM  C: is left alone and no admin rights are needed:
@@ -41,6 +42,7 @@ set "PIPERDIR=%TOOLSDIR%\piper"
 set "PIPERPY=%PIPERDIR%\python\python.exe"
 set "PIPERVOICES=%PIPERDIR%\voices"
 
+if /i "%~1"=="proxy" goto :humanizer
 if /i "%~1"=="tts" goto :tts
 
 call :ensure_tools
@@ -67,7 +69,7 @@ if /i "%~1"=="web"  goto :launch
 if /i "%~1"=="cli"  goto :launch
 echo.
 echo [ERROR] Unknown command "%~1".
-echo         Usage: run.bat web / run.bat cli / run.bat setup / run.bat tts
+echo         Usage: run.bat web / run.bat cli / run.bat setup / run.bat tts / run.bat proxy
 if not defined CI pause
 exit /b 1
 
@@ -102,7 +104,7 @@ echo    movie_summary_bot.exe   desktop window - needs OpenGL 3.3,
 echo                            so it cannot open on every PC
 echo    movie_summary_cli.exe   headless, console only
 echo.
-echo  Shortcuts:  run.bat web   /   run.bat cli   /   run.bat tts
+echo  Shortcuts:  run.bat web   /   run.bat cli   /   run.bat tts   /   run.bat proxy
 echo ============================================================
 if not defined CI pause
 exit /b 0
@@ -165,6 +167,26 @@ set "HF_HOME=%TOOLSDIR%\hf-cache"
 "%PIPERPY%" -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')" >nul 2>nul
 if errorlevel 1 echo [WARN] Whisper model pre-download failed - it retries on first use.
 exit /b 0
+
+REM --------------------------------------------------------------------------
+REM  Local recap humanizer proxy. It uses only Python's standard library.
+:humanizer
+if exist "%PIPERPY%" goto :humanizer_private_python
+where python >nul 2>nul
+if errorlevel 1 goto :humanizer_no_python
+set "HUMANIZER_PY=python"
+goto :humanizer_run
+:humanizer_private_python
+set "HUMANIZER_PY=%PIPERPY%"
+:humanizer_run
+"%HUMANIZER_PY%" "%~dp0humanizer_proxy.py"
+exit /b %errorlevel%
+:humanizer_no_python
+echo [ERROR] Python 3.8 or newer was not found.
+echo         Run "run.bat" once to install the private Python, or install Python 3.8+.
+if not defined CI pause
+exit /b 1
+
 :tts
 call :piper_install
 if not errorlevel 1 goto :tts_ready

@@ -14,12 +14,12 @@ Example Video: [Citizen Kane (1941)](https://www.youtube.com/watch?v=ej8c0NwKW00
 
 **Using the ready-made zip (no compiler needed):**
 
-```bat
-run.bat web
-```
+1. Run bare `run.bat` once. It installs/checks FFmpeg and the bundled Python/TTS tools, then stops.
+2. In one terminal, run `run.bat proxy` and leave it open.
+3. In a second terminal, run `run.bat web` and open <http://127.0.0.1:8080>.
+4. Add a newly rotated DeepSeek key in the Settings panel before generating.
 
-That is the whole install. The first time you run it, `run.bat` notices that FFmpeg
-is missing and **downloads and installs it for you** — portable, no admin rights,
+The first run downloads FFmpeg and, when needed, the private Python/TTS tools — portable, no admin rights,
 nothing written to `C:\` and no system `PATH` change:
 
 ```
@@ -79,8 +79,7 @@ Given a movie file, AI-Movie-Shorts will:
 1. **Fetch subtitles (SRT)** automatically (and convert timestamps to seconds)
 2. **Optionally fetch a script** (used only as extra story context)
 3. Ask **OpenAI** to generate a **clip plan** (timestamps + narration per clip)
-4. Generate voiceover audio for each clip (ElevenLabs by default, or a free
-   local engine — XTTS / Piper / any OpenAI-compatible server)
+4. Generate voiceover audio for each clip (ElevenLabs, Edge TTS, XTTS, Piper, or another OpenAI-compatible server)
 5. Use **FFmpeg** to:
    - cut each clip
    - time-stretch video to match narration length (speed-up capped at 1.75×)
@@ -113,8 +112,9 @@ run.bat web --port 9000           :: another port
 run.bat web --host 0.0.0.0        :: reachable from other machines on your LAN
 ```
 
-It is a small HTTP server with the whole UI embedded in the binary — no Node, no Python,
-no browser extension, nothing to install. The page gives you:
+The control-panel page is embedded in the binary and needs no Node or browser extension.
+The optional humanizer proxy runs in a separate Python process; see *Humanizer proxy* below.
+The page gives you:
 
 - **START GENERATION** / **CANCEL** (the run stops at the next step boundary)
 - a live **stage + progress bar** (movie 2 of 5 · clip 7 of 24 · "Narration (TTS)")
@@ -190,6 +190,8 @@ executable and in up to 5 parent folders, then switches to it.
 - `src\` — C source (see *Source layout* below)
 - `install_piper.ps1` — installs the free Piper narration engine (private Python + voice) into `F:\AI-Movie-Shorts\tools\piper`
 - `install_tools.ps1` — portable FFmpeg downloader (called by `run.bat`; installs to `F:\AI-Movie-Shorts\tools`)
+- `humanizer_proxy.py`, `prompts.py` — local DeepSeek proxy with cast-sheet, draft, polish, and validation passes
+- `tests\test_humanizer_proxy.py` — offline tests for prompt parsing, subtitles, names, and clip validation
 - `tools\mock_api_server.py` — offline stand-in for the OpenAI + ElevenLabs APIs
   and for the three free narration contracts (XTTS `/tts_to_audio/`, Piper
   `/synthesize`, OpenAI-compatible `/audio/speech`) — for testing
@@ -201,10 +203,11 @@ The runtime folders are created automatically.
 
 ## Requirements
 
-**Running the app** (the ready-made zip) needs nothing but FFmpeg, and `run.bat`
-installs that for you — portable, into `F:\AI-Movie-Shorts\tools`, nothing on `C:`.
-Double-clicking `run.bat` only performs this check/install and prints the result;
-it never launches the app on its own.
+**Running the core executables** needs FFmpeg. This checkout is configured to use the local
+humanizer proxy and Edge TTS as well, so run bare `run.bat` once to install the portable
+Python/TTS tools, start `run.bat proxy` in one terminal, then launch `run.bat web` or `run.bat cli`.
+The proxy also needs a valid DeepSeek key in Settings. A bare `run.bat` installs/checks tools
+and stops; it never launches the app on its own.
 
 **Building from source** additionally needs:
 
@@ -242,7 +245,7 @@ Edit `config.json` in the project root (or use the **Settings** card in the web 
 
 ```json
 {
-  "open_api_key": "YOUR_OPENAI_KEY",
+  "open_api_key": "OpenAIAPI",
   "openai_model": "gpt-5.2",
   "openai_base_url": "https://api.openai.com/v1",
 
@@ -271,16 +274,16 @@ Edit `config.json` in the project root (or use the **Settings** card in the web 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `open_api_key` | — (required) | OpenAI key. The run stops with a clear message while the placeholder is there |
+| `open_api_key` | — (required) | Key for the configured endpoint; use a valid DeepSeek key when the local humanizer proxy is enabled |
 | `openai_model` | `gpt-5.2` | model used for the clip plan |
-| `openai_base_url` | `https://api.openai.com/v1` | swap for a proxy/gateway/mock that speaks the Responses API |
-| `tts_provider` | `elevenlabs` | narration engine: `elevenlabs`, `xtts`, `piper` or `openai_tts` (see *Free narration*) |
+| `openai_base_url` | `https://api.openai.com/v1` | API base URL; this checkout points it to the local humanizer proxy |
+| `tts_provider` | `elevenlabs` | narration engine: `elevenlabs`, `xtts`, `piper`, `edge` or `openai_tts` (see *Free narration*) |
 | `elevenlabs_api_key` | — (required only when `tts_provider` is `elevenlabs`) | ElevenLabs key |
 | `eleven_voice_id` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
 | `eleven_model_id` | `eleven_multilingual_v2` | ElevenLabs TTS model |
 | `elevenlabs_base_url` | `https://api.elevenlabs.io/v1` | swap for a proxy/mock that speaks `/text-to-speech/<voice>` |
 | `tts_base_url` | per engine | server URL for `xtts` / `piper` / `openai_tts` (defaults to `http://127.0.0.1:8020`, `http://127.0.0.1:5000`, `https://api.openai.com/v1`) |
-| `tts_voice` | — | `xtts`: speaker file name · `piper`: voice id (optional) · `openai_tts`: voice name |
+| `tts_voice` | — | `xtts`: speaker file name · `piper`: voice id (optional) · `edge`: Edge voice name (or leave empty to match the recap language) · `openai_tts`: voice name |
 | `tts_language` | `en` | `xtts` only (`en`, `hi`, `ur`, `es`, `fr`, ...) |
 | `tts_model` | `tts-1` | `openai_tts` only |
 | `tts_api_key` | empty | optional bearer token for `openai_tts`; falls back to `open_api_key` |
@@ -292,6 +295,82 @@ Edit `config.json` in the project root (or use the **Settings** card in the web 
 | `make_vertical` | `true` | set `false` to skip the 9:16 render |
 | `retire_movies` | `true` | set `false` to leave processed files in `movies\` |
 
+### Recap language (separate from TTS language)
+
+The recap's writing language is controlled by **`recap_languages`**, not by
+`tts_language`:
+
+| Web-panel choice | `recap_languages` value |
+|---|---|
+| English | `""` (an empty string) |
+| Chinese (Simplified Mandarin) | `"Mandarin Chinese (Simplified characters)"` |
+| Arabic | `"Modern Standard Arabic"` |
+| Spanish (Latin American) | `"Spanish (neutral Latin American)"` |
+
+For a **Chinese-only** recap, choose Chinese and uncheck English. Multiple
+checked boxes deliberately request multiple recaps in order, so leaving English
+checked while adding Chinese also requests an English recap. In the web panel,
+press **SAVE SETTINGS** after changing these boxes and before **START GENERATION**;
+Start does not submit unsaved form values. For CLI/desktop runs, edit the
+`recap_languages` array in `config.json` directly. For example:
+
+```json
+{
+  "recap_languages": ["Mandarin Chinese (Simplified characters)"]
+}
+```
+
+English subtitles are fine: the planner prompt directs narration to the selected
+recap language even when the source subtitles are English. A matching
+`MovieTitle.zh.srt` is optional if you want to supply Chinese subtitles directly.
+For Edge TTS, use a Chinese voice such as `zh-CN-YunxiNeural` (the voice speaks
+the narration; it does not choose the recap's writing language). `tts_language` is
+an XTTS setting and does not replace `recap_languages`.
+
+### Humanizer proxy (cast sheet + two-pass narration)
+
+The Windows executables have their original planner prompt compiled in. The
+local proxy replaces that planner call with a cast-sheet pass, a target-language
+draft, a polish pass, and code-side clip/name validation. The proxy forwards
+requests to DeepSeek using the bearer key supplied by the app; it does not store
+or print the key. Cast sheets are cached locally under `cast_cache/` using the
+movie title, model, and subtitle content.
+
+The checked-in `config.json` points `openai_base_url` at
+`http://127.0.0.1:9200/v1`. Start the proxy in one terminal and leave it running,
+then start the app in another:
+
+```bat
+run.bat proxy
+run.bat web
+```
+
+`run.bat proxy` uses the private Python installed by the normal setup when it is
+available, and otherwise uses `python` from PATH. The proxy itself uses only the
+Python standard library. You can also start it directly with
+`python humanizer_proxy.py`. Enter a **new, valid DeepSeek key** in Settings (or
+`config.json`) before generation. The app first probes its Responses endpoint;
+the proxy answers that unsupported route with 404 so the app can use its
+built-in `/chat/completions` fallback, which the proxy handles.
+
+The proxy reads the target recap language from the app's planner prompt, so its
+cast/draft/polish calls stay in the selected language. English, Simplified
+Mandarin, Arabic, and Latin American Spanish receive localized openings and
+sign-offs. Other selected languages stay in the requested language, with their
+opening and sign-off generated in-language instead of being forced into English.
+Subtitle variants are normalized before planning; the clip JSON is snapped to real
+subtitle boundaries, and clips with unapproved Latin-script name candidates receive
+bounded repair attempts. If a model response cannot be
+validated, the proxy returns a clear error instead of silently returning a
+malformed clip plan. Set `POLISH=0` to disable the polish pass, or `UPSTREAM` to
+use a different OpenAI-compatible chat endpoint.
+
+Run the offline unit tests with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ### Free narration (no ElevenLabs key)
 
 `tts_provider` swaps the narration engine without touching anything else in the
@@ -301,6 +380,7 @@ so clipping, concatenation and mixing behave exactly the same.
 | `tts_provider` | Cost | What you run | Request |
 |---|---|---|---|
 | `elevenlabs` | paid (default) | nothing, it is the ElevenLabs cloud API | `POST {elevenlabs_base_url}/text-to-speech/{voice}` |
+| `edge` | **free** | Run bare `run.bat` once to install the Edge TTS package into its private Python; requires internet | `edge_tts_synth.py` with the selected Edge neural voice |
 | `xtts` | **free** | `pip install xtts-api-server` then `python -m xtts_api_server` (port 8020) | `POST {tts_base_url}/tts_to_audio/` → WAV |
 | `piper` | **free** | `run.bat tts` (installs a private Python + voice into `F:\AI-Movie-Shorts\tools\piper` and starts the server) | `POST {tts_base_url}/synthesize` → WAV |
 | `openai_tts` | paid or free | OpenAI, or a local OpenAI-compatible server such as Kokoro-FastAPI | `POST {tts_base_url}/audio/speech` → MP3 |
