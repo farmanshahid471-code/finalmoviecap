@@ -28,6 +28,13 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+# The bundled Windows embeddable Python runs in isolated mode and may omit the
+# script's directory from sys.path. Add it explicitly before importing our
+# sibling prompt module.
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_DIR not in sys.path:
+    sys.path.insert(0, PROJECT_DIR)
+
 from prompts import (
     CAST_SYSTEM,
     CAST_USER,
@@ -68,7 +75,6 @@ MAX_SRT_CHARS = _env_int("MAX_SRT_CHARS", 250000, 20000, 2_000_000)
 MAX_SCRIPT_CHARS = _env_int("MAX_SCRIPT_CHARS", 120000, 10000, 500000)
 MAX_STYLE_EXAMPLE_CHARS = _env_int("MAX_STYLE_EXAMPLE_CHARS", 18000, 2000, 50000)
 MAX_BODY_BYTES = _env_int("MAX_BODY_BYTES", 20 * 1024 * 1024, 1024, 100 * 1024 * 1024)
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.environ.get("SCRIPT_DIR", os.path.join(PROJECT_DIR, "scripts", "srt_files"))
 CACHE = os.environ.get(
     "CAST_CACHE",
