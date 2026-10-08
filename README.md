@@ -15,9 +15,8 @@ Example Video: [Citizen Kane (1941)](https://www.youtube.com/watch?v=ej8c0NwKW00
 **Using the ready-made zip (no compiler needed):**
 
 1. Run bare `run.bat` once. It installs/checks FFmpeg and the bundled Python/TTS tools, then stops.
-2. In one terminal, run `run.bat proxy` and leave it open.
-3. In a second terminal, run `run.bat web` and open <http://127.0.0.1:8080>.
-4. Add a newly rotated DeepSeek key in the Settings panel before generating.
+2. Run `run.bat web` and open <http://127.0.0.1:8080>.
+3. In Settings, use `deepseek-v4-pro`, set the API base URL to `https://api.deepseek.com`, and enter your DeepSeek API key. The local humanizer proxy is optional and is not needed for direct API use.
 
 The first run downloads FFmpeg and, when needed, the private Python/TTS tools — portable, no admin rights,
 nothing written to `C:\` and no system `PATH` change:
@@ -327,7 +326,26 @@ For Edge TTS, use a Chinese voice such as `zh-CN-YunxiNeural` (the voice speaks
 the narration; it does not choose the recap's writing language). `tts_language` is
 an XTTS setting and does not replace `recap_languages`.
 
-### Humanizer proxy (cast sheet + two-pass narration)
+### Direct DeepSeek and target-movie script (no humanizer required)
+
+The default app path calls the configured provider directly. For DeepSeek, use
+`openai_model: deepseek-v4-pro` and `openai_base_url: https://api.deepseek.com`.
+The compiled app prompt treats **INPUT A** as the timestamped subtitle track and
+**INPUT B** as optional script text for story context; the script is not a source
+of clip timecodes. To provide the target movie's script, place it beside the SRT
+as `scripts/srt_files/<MovieTitle>.txt` (for example, `Toy Story 5.txt` beside
+`Toy Story 5.srt`). Do not name this file `recap_style_example.txt`: that name is
+only for the optional local proxy and is ignored by the direct app path. If the
+log says “No IMSDb script available; using subtitles only,” the script was not
+loaded into INPUT B. A log saying it will retry without the script means the
+request was too large and the script context was dropped.
+
+The direct app uses its built-in prompt, not the custom prompt changes in the
+optional humanizer proxy. The SRT provides timing, but neither text source lets
+the model inspect video frames, so exact visual matching cannot be guaranteed
+without a separate video-frame analysis.
+
+### Optional humanizer proxy (cast sheet + two-pass narration)
 
 The Windows executables have their original planner prompt compiled in. The
 local proxy replaces that planner call with a cast-sheet pass, a target-language
@@ -359,14 +377,10 @@ The proxy matches screenplay beats to SRT cue windows, but it cannot inspect vid
 frames; exact visual matching, especially for silent action, still requires a
 separate vision check on sampled frames from the actual movie.
 
-The checked-in `config.json` points `openai_base_url` at
-`http://127.0.0.1:9200/v1`. Start the proxy in one terminal and leave it running,
-then start the app in another:
-
-```bat
-run.bat proxy
-run.bat web
-```
+The checked-in `config.json` points directly to `https://api.deepseek.com`, so
+no proxy process is required. To opt into the humanizer instead, change
+`openai_base_url` to `http://127.0.0.1:9200/v1`, start `run.bat proxy` in one
+terminal, and run the app in another.
 
 `run.bat proxy` uses the private Python installed by the normal setup when it is
 available, and otherwise uses `python` from PATH. The proxy itself uses only the
@@ -527,8 +541,9 @@ If no music files exist, output will be narration-only.
 
 If auto-fetch fails, you can manually add:
 - `scripts\srt_files\<MovieTitle>.srt`
+- `scripts\srt_files\<MovieTitle>.txt` for the target movie's same-movie script context (for example, `Toy Story 5.txt` beside `Toy Story 5.srt`).
 
-Then rerun.
+Then rerun. Check the generation log to confirm the script was loaded; if it says it is using subtitles only, the script did not reach INPUT B.
 
 ---
 
