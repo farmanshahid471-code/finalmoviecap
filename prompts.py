@@ -2,31 +2,33 @@
 
 CAST_SYSTEM = (
     "You are a careful script supervisor. Return strict JSON only. "
-    "Use only evidence in the supplied dialogue."
+    "Use the matching target-movie screenplay to understand the full cast and story; "
+    "use the timestamped subtitle track to verify final-cut dialogue, names, and order. "
+    "Do not use an unrelated style sample as story evidence."
 )
 
-CAST_USER = """Build a CAST SHEET for {title!r} from the target movie's timestamped subtitles and optional screenplay. Subtitles have no speaker labels and may contain typos.
+CAST_USER = """Build a CAST SHEET for {title!r} from the matching target-movie screenplay and timestamped subtitles. Subtitles have no speaker labels and may contain typos.
 
 Return:
 - setting: one short line about where/when the target story takes place; use "unclear" when unknown
 - characters: a JSON array; each item has name (canonical spelling), variants (other spellings/typos found in the subtitles), who (one short evidence-based description), relations (one short line), and mentions (rough non-negative count)
 
-Use only the target movie's sources for character names and plot facts. The optional target screenplay may clarify character roles and canonical spellings; the timestamped subtitles identify the final-cut dialogue and timeline. Do not use an uploaded style example for names, events, or setting. Do not use memory of the movie, sequels, or franchise. Do not invent anything beyond the target movie's sources.
+Read the full matching screenplay to understand the target movie's setting, characters, relationships, and story. Use it as the main reference for character roles and canonical spellings. Use the subtitles to verify the final-cut dialogue, subtitle spellings, and chronology. If no matching screenplay is provided, rely on the target subtitles only. Do not use an unrelated style example, movie memory, sequels, or franchise facts. Do not invent beyond the supplied target-movie sources.
 
 Return ONLY this JSON shape:
 {{"setting":"...","characters":[{{"name":"...","variants":[],"who":"...","relations":"...","mentions":0}}]}}
 
-OPTIONAL TARGET MOVIE SCREENPLAY:
+MATCHING TARGET-MOVIE SCREENPLAY (if supplied):
 {script_context}
 
-TARGET MOVIE SUBTITLES (compact seconds format):
+TARGET MOVIE SUBTITLES (final-cut dialogue and compact seconds format):
 {srt}"""
 
-DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. Use the target movie's timestamped subtitles as the authoritative source for its events and timeline; use its optional screenplay only as matching story context. A separate uploaded recap script is a style example only, never a source of target plot or names. Guide the listener through the target plot chronologically with direct, natural narration. Keep the tone warm and lightly dramatic when events call for it, but never overact, joke at the movie, or turn the recap into a review. Align every narration to real subtitle times. Follow the requested output language exactly. Always answer with strict JSON only."""
+DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. When a matching screenplay for the target movie is supplied, read it as the full story reference for scenes, characters, and actions; use the target movie's timestamped subtitles as the final-cut chronology and exact timecode source. Write original recap narration rather than copying screenplay wording or dialogue. A separate uploaded recap-style sample is style guidance only, never a source of target plot or names. Guide the listener through the target plot chronologically with direct, natural narration. Keep the tone warm and lightly dramatic when events call for it, but never overact, joke at the movie, or turn the recap into a review. Align every narration to real subtitle times. Follow the requested output language exactly. Always answer with strict JSON only."""
 
 DRAFT_USER = """MOVIE: {title}
 TARGET LANGUAGE: {language}
-SETTING (from dialogue only): {setting}
+SETTING (from target-movie screenplay and subtitles): {setting}
 
 CAST SHEET — these are the ONLY valid character names. Spelling is final:
 {cast}
@@ -34,27 +36,28 @@ CAST SHEET — these are the ONLY valid character names. Spelling is final:
 UPLOADED RECAP SCRIPT — STYLE EXAMPLE ONLY (may be another movie):
 {style_example}
 
-OPTIONAL SCREENPLAY FOR THE TARGET MOVIE — plot context only:
+MATCHING TARGET-MOVIE SCREENPLAY — read in full for story, scene, and character context; write original narration rather than copying it:
 {script_context}
 
-TARGET MOVIE SUBTITLES — content timeline and timecode source:
+TARGET MOVIE SUBTITLES — final-cut chronology, dialogue, and exact timecode source:
 {srt}
 
-=== KEEP STYLE AND STORY SOURCES SEPARATE ===
-- Use the uploaded example only to learn high-level narration cadence, sentence rhythm, transitions, level of detail, and opening/closing structure. Never copy its sentences or distinctive phrases, or use its plot, names, locations, props, dialogue, or timestamps in the target recap.
-- The target movie's subtitles provide the timestamped timeline and evidence of what is in this cut. If a matching screenplay for this same movie is supplied, use it to clarify actions and motivations; never treat it as a style sample.
-- If no target-movie screenplay is supplied, build the story only from the target movie's subtitles. Do not borrow story events from the style example or movie memory.
+=== KEEP STORY AND TIMING SOURCES DISTINCT ===
+- Read the full matching target-movie screenplay to understand the complete plot, scene order, characters, relationships, and actions. Use those details to write a new recap in your own words; do not copy screenplay prose or dialogue.
+- The target movie's SRT supplies the final-cut timeline and exact cue boundaries. Use it to confirm which screenplay events belong in this cut and to place each narrated beat at a real time.
+- A separate uploaded recap-style sample, if present, teaches high-level cadence, transitions, and structure only. Never use its story, names, locations, props, dialogue, or timestamps as target-movie facts, and do not copy its sentences or distinctive phrases.
+- If no matching target-movie screenplay is supplied, build the story only from the target movie's subtitles. Do not use movie memory or unrelated style-sample plot facts.
 
 === TARGET STORY-TO-SUBTITLE ALIGNMENT ===
-- Before drafting, silently map target-movie story beats to nearby subtitle cues by matching dialogue, character names, and sequence. Use only real subtitle cue boundaries for clip start/end times; never guess or evenly distribute timestamps.
-- Each narration must describe a target-movie beat aligned to its own subtitle time window. A silent screenplay action may be included when a matching same-movie screenplay and surrounding cues establish where it occurs.
-- Do not shift a beat to unrelated dialogue or narrate it before it occurs. If a same-movie screenplay and subtitle sequence conflict, follow the final-cut subtitle timeline; if there is no reliable match, omit the beat or use a brief neutral description.
+- Before drafting, silently map the screenplay's ordered scenes and story beats to nearby subtitle cues by matching dialogue, character names, and sequence. Use only real subtitle cue boundaries for clip start/end times; never guess or evenly distribute timestamps.
+- Each narration must describe a target-movie beat aligned to its own subtitle time window. Include silent screenplay actions when surrounding cues and chronology make their place in the final cut reliable.
+- Do not shift a beat to unrelated dialogue or narrate it before it occurs. If the screenplay and SRT conflict, follow the SRT for final-cut order and timing; omit scenes that are not in the cut. If a script event has no reliable time match, omit it or use a brief neutral description rather than guessing.
 - Keep each clip tied to its selected time window so the narration follows the corresponding movie segment.
 
 === ACCURACY RULES ===
 1. Use only character names from the CAST SHEET, spelled exactly as given. Never invent or import a name from memory, a sequel, or a franchise.
 2. Subtitles have no speaker labels. If unsure who speaks or acts, do not guess a name; use a neutral description or rephrase.
-3. Narrate only events from the target movie, using its subtitles and any matching target-movie screenplay; align every event to this clip's subtitle time window. Never take plot facts from the uploaded style example or invent a plot point, place, motive, or outcome.
+3. Narrate target-movie story events from the full matching screenplay when supplied, but include only events consistent with the SRT's final-cut timeline; the SRT determines every clip time. Without a matching screenplay, use only the target SRT. Never take plot facts from a style sample or invent a plot point, place, motive, or outcome.
 4. Keep strict chronological order. Never reveal later events early or mention events outside the selected range.
 5. Keep each character's name, type, and relationships consistent with the CAST SHEET. First mention may include a short accurate hook; later mentions use the canonical name or a natural pronoun.
 6. Keep the entire narration—including hook and sign-off—in {language}. Character names stay exactly as written in the CAST SHEET.

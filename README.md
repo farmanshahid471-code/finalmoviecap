@@ -339,22 +339,24 @@ requests to DeepSeek using the bearer key supplied by the app; it does not store
 or print the key. Cast sheets are cached locally under `cast_cache/` using the
 movie title, model, and subtitle content.
 
-To upload a **recap script as a style example**, put it in the **Subtitles** tab
-(`scripts/srt_files/`) as `recap_style_example.txt`. `style_example.txt` and
-`recap_example.txt` are also recognized. Upload the target movie's timestamped
-subtitle file separately, named for the movie (for example, `Toy Story 5.srt`).
-Use UTF-8 `.txt` for the example; the proxy caps long examples to keep requests
-manageable. If you also have the target movie's actual screenplay, upload it as
-`Toy Story 5.txt` or `Toy Story 5_script.txt` for additional plot context.
+For the **same-movie screenplay** you want DeepSeek to study, put it in the
+**Subtitles** tab (`scripts/srt_files/`) with the movie title in its filename.
+For example, alongside `Toy Story 5.srt`, name the screenplay
+`Toy Story 5.txt` or `Toy Story 5_script.txt`. This makes it target-story
+context: DeepSeek reads it for the plot, scenes, and characters, then writes a
+new recap in its own wording. The target SRT supplies the final-cut timeline and
+real clip timecodes. Scripts up to 250,000 characters are included; longer ones
+are shortened to their beginning and ending, with a warning in the proxy log.
+
+Do **not** name a same-movie screenplay `recap_style_example.txt`: that name is
+reserved for a separate narration-style sample, whose plot, names, and timestamps
+are deliberately excluded. If you have a separate style sample, it can be uploaded
+as `recap_style_example.txt`, `style_example.txt`, or `recap_example.txt`.
 
 Set `openai_model` to `deepseek-v4-pro`, enter a valid DeepSeek key, keep
-`openai_base_url` on the local proxy, and save settings before starting. DeepSeek
-uses the uploaded example for narration style only—not its names, plot, or
-timestamps. It uses the target SRT to plan real clip times and events; any
-same-movie screenplay is optional context.
-
-The proxy cannot inspect video frames, so SRT time alignment reduces mismatch
-but cannot guarantee frame-level matching for silent action. That requires a
+`openai_base_url` on the local proxy, and save the settings before starting.
+The proxy matches screenplay beats to SRT cue windows, but it cannot inspect video
+frames; exact visual matching, especially for silent action, still requires a
 separate vision check on sampled frames from the actual movie.
 
 The checked-in `config.json` points `openai_base_url` at
