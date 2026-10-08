@@ -339,6 +339,20 @@ requests to DeepSeek using the bearer key supplied by the app; it does not store
 or print the key. Cast sheets are cached locally under `cast_cache/` using the
 movie title, model, and subtitle content.
 
+To use your own English screenplay, upload a matching pair into the **Subtitles**
+tab (the `scripts/srt_files/` folder): for example, `Toy Story 5.srt` and
+`Toy Story 5.txt`. Plain UTF-8 `.txt` is preferred; `.md` is also accepted. The
+uploaded script takes precedence over a scraped script. Set `openai_model` to
+`deepseek-v4-pro`, use a valid DeepSeek key, keep `openai_base_url` on the local
+proxy, and save the settings before starting.
+
+The proxy uses screenplay text only for story context and name disambiguation;
+the timestamped SRT is authoritative for clip timing, chronology, and what may
+be narrated in each selected window. This reduces script/subtitle mismatches,
+but the proxy does not inspect video frames, so it cannot guarantee frame-level
+visual matching for silent action. That would require a separate video-frame
+vision check.
+
 The checked-in `config.json` points `openai_base_url` at
 `http://127.0.0.1:9200/v1`. Start the proxy in one terminal and leave it running,
 then start the app in another:

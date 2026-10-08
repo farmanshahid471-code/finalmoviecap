@@ -11,13 +11,16 @@ Build a CAST SHEET of named characters actually mentioned in the dialogue. Retur
 - setting: one short line about where/when the story takes place, based only on dialogue; use "unclear" when unknown
 - characters: a JSON array; each item has name (canonical spelling), variants (other spellings/typos found), who (one short evidence-based description), relations (one short line), and mentions (rough non-negative count)
 
-Do not use memory of the movie, its sequels, or the franchise. Do not invent a name, species, location, relationship, or fact. Use "unclear" for anything not established by dialogue. Preserve names in the script's original writing system.
+Use the subtitles as the source of truth for the movie's final-cut dialogue and character spellings. The optional script is supplementary context: use it to resolve a relationship or spelling only when consistent with the subtitles. Do not include a character, event, location, or detail merely because it appears in the script; it must also be relevant to the subtitle track. Do not use memory of the movie, its sequels, or the franchise. Do not invent anything. Use "unclear" when evidence is insufficient.
 
 Return ONLY this JSON shape:
 {{"setting":"...","characters":[{{"name":"...","variants":[],"who":"...","relations":"...","mentions":0}}]}}
 
-SUBTITLES (compact seconds format):
-{srt}"""
+SUBTITLES (compact seconds format; authoritative):
+{srt}
+
+OPTIONAL ENGLISH SCRIPT CONTEXT (may be a different draft; context only):
+{script_context}"""
 
 DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. Guide the listener through the plot in chronological order with direct, natural narration and smooth transitions between storylines. Keep the tone warm and lightly dramatic when the events call for it, but never overact, joke at the movie, or turn the recap into a review. Be specific about who does what and why, using only evidence in the supplied subtitles and cast sheet. Follow the requested output language exactly. Always answer with strict JSON only."""
 
@@ -27,6 +30,15 @@ SETTING (from dialogue only): {setting}
 
 CAST SHEET — these are the ONLY valid character names. Spelling is final:
 {cast}
+
+OPTIONAL ENGLISH SCREENPLAY (story context only; it may differ from the final cut):
+{script_context}
+
+=== SUBTITLE / SCRIPT ALIGNMENT ===
+- The timestamped subtitles are authoritative for the final cut: use them to select ranges, order events, and determine what is happening inside each clip window.
+- Use the screenplay only to clarify a name or motivation when that context agrees with the subtitles. Never import a screenplay-only scene, action, prop, or outcome into a clip.
+- Do not move an event to another timestamp because it appears elsewhere in the screenplay. If script and subtitles conflict, follow the subtitle window and keep the narration conservative.
+- Every narration must match the dialogue and story beat in its own selected time window. Do not use later script context to describe an event before it occurs.
 
 === ACCURACY RULES ===
 1. Use only character names from the CAST SHEET, spelled exactly as given. Never invent or import a name from memory, a sequel, or a franchise.
@@ -63,23 +75,24 @@ Before answering, silently check: every name matches the CAST SHEET; no banned p
 
 POLISH_SYSTEM = "You are a careful voiceover script editor. Preserve the source facts and make the narration clear, chronological, and natural when spoken aloud. Return strict JSON only."
 
-POLISH_USER = """Rewrite the narrations below so they sound like natural spoken storytelling in {language}.
+POLISH_USER = """Polish the narrations below into natural, clear voiceover in {language}. Each item includes its exact clip window and the subtitle cues from that window.
 
-CAST SHEET (only valid character names; spelling is final):
+CAST SHEET (canonical spellings):
 {cast}
 
-Rules:
-- Keep every event, fact, character name, and its spelling unchanged. Do not add names, dialogue, motives, or details.
-- Keep each narration's word/character count within 15 percent of the original so it still fits the clip. Preserve the first opening and the final sign-off exactly.
-- Favor clear event-by-event storytelling, explicit cause and effect, and brief transitions where the location or timeline changes.
-- Use plain, spoken language with a steady pace. Remove vague filler, repetitive transitions, run-on sentences, and stiff or generic wording; do not make the narration flowery or more dramatic than the events.
-- Keep present tense and third person. Do not quote dialogue. No emoji, lists, sound cues, or transcript artifacts.
+Grounding and style rules:
+- Use the subtitle cues for the item's own time window as the authority for what can be narrated there. Do not move an event to another time window.
+- If a detail from the screenplay or draft is not supported by this clip's cues, remove it or make the narration neutral. Never add an event, character, prop, motive, or outcome.
+- Keep every supported event and canonical character name. Do not add dialogue or quote lines.
+- Keep each narration's word/character count within 15 percent of its draft so it still fits the clip. Preserve the first opening and final sign-off exactly.
+- Use direct, chronological voiceover with clear cause and effect, plain spoken language, and brief transitions only when useful. Avoid run-ons, vague filler, repetition, and ornate or overdramatic wording.
+- Keep present tense and third person. No emoji, lists, sound cues, or transcript artifacts.
 {fix_notes}
 
 Return ONLY this JSON shape, with exactly {count} strings in the same order:
 {{"narrations":["...","..."]}}
 
-INPUT NARRATIONS:
+CLIPS, DRAFT NARRATIONS, AND TIME-ALIGNED SUBTITLE EVIDENCE:
 {items}"""
 
 REPAIR_SYSTEM = "You are a careful movie-recap fact checker. Make the smallest correction needed while preserving the clear, chronological voiceover style. Return strict JSON only."

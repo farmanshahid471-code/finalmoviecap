@@ -1,5 +1,6 @@
 import json
 import tempfile
+from pathlib import Path
 import threading
 import unittest
 import urllib.error
@@ -47,6 +48,8 @@ INPUT A (Subtitles with timestamps in SECONDS):
 [5-10] Jessie opens the door.
 
 INPUT B (Optional script text WITHOUT timestamps; may be empty):
+EXT. ISLAND - DAY
+A cargo container washes ashore.
 
 TASK:
 - Choose 2 non-overlapping time ranges that best cover the full plot arc.
@@ -57,6 +60,7 @@ TASK:
         self.assertEqual(parsed.title, "Sample Movie")
         self.assertEqual(parsed.language, "Mandarin Chinese (Simplified characters)")
         self.assertEqual(parsed.n_clips, 2)
+        self.assertIn("A cargo container washes ashore", parsed.script)
         self.assertEqual(len(proxy.parse_subtitle_cues(parsed.srt)), 2)
         self.assertIn("5-10 seconds", parsed.length_rules[0])
 
@@ -65,6 +69,26 @@ TASK:
         source = "[1-2] <i>Jesse</i> says, let's go!"
         normalized = proxy.normalize_srt(source, cast)
         self.assertEqual(normalized, "[1-2] Jessie says, let's go!")
+
+
+class ScriptContextTests(unittest.TestCase):
+    def test_uploaded_script_precedes_scraped_prompt_context(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, "Sample Movie.txt").write_text(
+                "FADE IN:\nA cargo container reaches the island.", encoding="utf-8"
+            )
+            with patch.object(proxy, "SCRIPT_DIR", folder):
+                script, source = proxy.select_script_context(
+                    "Sample Movie", "Scraped draft from a different cut."
+                )
+        self.assertEqual(source, "uploaded file Sample Movie.txt")
+        self.assertIn("cargo container", script)
+        self.assertNotIn("different cut", script)
+
+    def test_cast_cache_key_includes_screenplay_content(self):
+        first = proxy._cache_path("Movie", "deepseek-v4-pro", "[1-2] Hello", "script A")
+        second = proxy._cache_path("Movie", "deepseek-v4-pro", "[1-2] Hello", "script B")
+        self.assertNotEqual(first, second)
 
 
 class ValidationTests(unittest.TestCase):
@@ -145,9 +169,12 @@ class PipelineTests(unittest.TestCase):
             json.dumps({"narration": "Jessie找到了回家的路。一个陌生人给了她一个线索。" + profile["outro"]}, ensure_ascii=False),
         ]
         seen_systems = []
+        seen_users = []
+        source_script = "FADE IN. Jessie discovers that the island changes everything."
 
         def fake_chat(key, model, system, user, temperature, timeout=900):
             seen_systems.append(system)
+            seen_users.append(user)
             if not responses:
                 raise AssertionError("unexpected model call")
             return responses.pop(0)
@@ -161,6 +188,7 @@ class PipelineTests(unittest.TestCase):
                 n_clips=2,
                 length_rules=["Each clip should fit its timestamps."],
                 language="Mandarin Chinese (Simplified characters)",
+                source_script=source_script,
             )
 
         self.assertEqual(set(result.keys()), {"clips"})
@@ -174,6 +202,11 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(DRAFT_SYSTEM, seen_systems)
         self.assertIn(POLISH_SYSTEM, seen_systems)
         self.assertIn(REPAIR_SYSTEM, seen_systems)
+        self.assertIn(source_script, seen_users[0])
+        self.assertIn(source_script, seen_users[1])
+        self.assertIn("SUBTITLE / SCRIPT ALIGNMENT", seen_users[1])
+        self.assertIn("CLIPS, DRAFT NARRATIONS, AND TIME-ALIGNED SUBTITLE EVIDENCE", seen_users[2])
+        self.assertIn("[10-20] Jessie enters the room.", seen_users[2])
         self.assertEqual(responses, [])
 
     def test_unlisted_language_is_not_forced_to_an_english_signoff(self):

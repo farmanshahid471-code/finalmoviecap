@@ -65,10 +65,13 @@ POLISH_TEMP = _env_float("POLISH_TEMP", 0.7)
 BATCH = _env_int("BATCH", 25, 1, 100)
 NAME_RETRIES = _env_int("NAME_RETRIES", 2, 0, 5)
 MAX_SRT_CHARS = _env_int("MAX_SRT_CHARS", 250000, 20000, 2_000_000)
+MAX_SCRIPT_CHARS = _env_int("MAX_SCRIPT_CHARS", 120000, 10000, 500000)
 MAX_BODY_BYTES = _env_int("MAX_BODY_BYTES", 20 * 1024 * 1024, 1024, 100 * 1024 * 1024)
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.environ.get("SCRIPT_DIR", os.path.join(PROJECT_DIR, "scripts", "srt_files"))
 CACHE = os.environ.get(
     "CAST_CACHE",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "cast_cache"),
+    os.path.join(PROJECT_DIR, "cast_cache"),
 )
 OUTRO_EN = (
     "If you enjoyed the video, don't forget to leave a like, subscribe, and turn on "
@@ -312,6 +315,24 @@ class BotPrompt:
     n_clips: int
     language: str
     length_rules: List[str]
+    script: str = ""
+
+
+def clean_script_text(script: str) -> str:
+    """Normalize an uploaded or embedded screenplay and bound its prompt size."""
+    text = html.unescape(script or "").replace("\x00", " ")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = "\n".join(line.rstrip() for line in text.splitlines())
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) > MAX_SCRIPT_CHARS:
+        keep = max(1, (MAX_SCRIPT_CHARS - 100) // 2)
+        text = (
+            text[:keep].rstrip()
+            + "\n\n[Middle of screenplay omitted to fit context; subtitles remain authoritative.]\n\n"
+            + text[-keep:].lstrip()
+        )
+        log("WARNING: screenplay context exceeded %d characters; retained beginning and ending" % MAX_SCRIPT_CHARS)
+    return text
 
 
 def parse_bot_prompt(system: str, user: str) -> Optional[BotPrompt]:
@@ -330,8 +351,14 @@ def parse_bot_prompt(system: str, user: str) -> Optional[BotPrompt]:
         r"(?im)^\s*INPUT\s+B\s*\(Optional\s+script\s+text\s+WITHOUT\s+timestamps;\s*may\s+be\s+empty\)\s*:",
         tail,
     )
+    script_text = ""
     if not end_match:
         end_match = re.search(r"(?im)^\s*TASK\s*:", tail)
+    elif tail[end_match.start():end_match.end()].lstrip().upper().startswith("INPUT B"):
+        script_tail = tail[end_match.end():]
+        task_match = re.search(r"(?im)^\s*TASK\s*:", script_tail)
+        if task_match:
+            script_text = script_tail[:task_match.start()].strip()
     if not end_match:
         return None
     source_srt = tail[:end_match.start()].strip()
@@ -347,7 +374,65 @@ def parse_bot_prompt(system: str, user: str) -> Optional[BotPrompt]:
         n_clips=max(1, min(200, int(count_match.group(1)))),
         language=_get_language(combined),
         length_rules=_extract_rules(combined),
+        script=clean_script_text(script_text),
     )
+
+
+def load_uploaded_script(title: str) -> Tuple[str, str]:
+    """Load a matching UTF-8 script uploaded beside the movie's SRT.
+
+    Accepted convention: ``<Movie Title>.txt`` (preferred), with optional
+    ``_script`` / `` script`` suffixes or Markdown extensions.
+    """
+    raw_stem = (title or "").strip().replace("\\", "/").rsplit("/", 1)[-1]
+    stem = raw_stem
+    for extension in (".mp4", ".mkv", ".avi", ".mov", ".m4v"):
+        if stem.casefold().endswith(extension):
+            stem = stem[:-len(extension)]
+            break
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", stem).strip(" .")
+    if not stem:
+        return "", ""
+    candidates = (
+        stem + ".txt",
+        stem + "_script.txt",
+        stem + " script.txt",
+        stem + ".md",
+        stem + "_script.md",
+    )
+    try:
+        files = {name.casefold(): name for name in os.listdir(SCRIPT_DIR)}
+    except OSError:
+        return "", ""
+    for candidate in candidates:
+        actual_name = files.get(candidate.casefold())
+        if not actual_name:
+            continue
+        path = os.path.join(SCRIPT_DIR, actual_name)
+        try:
+            if os.path.getsize(path) > 5 * 1024 * 1024:
+                log("WARNING: uploaded screenplay is over 5 MB; ignoring", actual_name)
+                continue
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+                text = clean_script_text(handle.read())
+        except OSError as exc:
+            log("WARNING: could not read uploaded screenplay", actual_name, exc)
+            continue
+        if text:
+            log("loaded uploaded English screenplay:", actual_name, "(%d characters)" % len(text))
+            return text, actual_name
+    return "", ""
+
+
+def select_script_context(title: str, embedded_script: str) -> Tuple[str, str]:
+    """Prefer an uploaded screenplay; otherwise use the app's optional INPUT B."""
+    uploaded, filename = load_uploaded_script(title)
+    if uploaded:
+        return uploaded, "uploaded file %s" % filename
+    embedded = clean_script_text(embedded_script)
+    if embedded:
+        return embedded, "script embedded in app prompt"
+    return "", "none (subtitles only)"
 
 
 def clean_subtitle_text(text: str) -> str:
@@ -537,8 +622,8 @@ def normalize_srt(srt: str, cast: Dict[str, Any]) -> str:
     )
 
 
-def _cache_path(title: str, model: str, srt: str) -> str:
-    digest = hashlib.sha256((model + "\0" + title + "\0" + srt).encode("utf-8")).hexdigest()[:20]
+def _cache_path(title: str, model: str, srt: str, script: str = "") -> str:
+    digest = hashlib.sha256((model + "\0" + title + "\0" + srt + "\0" + script).encode("utf-8")).hexdigest()[:20]
     safe_title = re.sub(r"[^\w.-]+", "_", title, flags=re.UNICODE).strip("._")[:48] or "movie"
     return os.path.join(CACHE, "%s_%s.json" % (safe_title, digest))
 
@@ -579,9 +664,9 @@ def _validate_cast(value: Dict[str, Any]) -> Dict[str, Any]:
     return {"setting": setting, "characters": cleaned}
 
 
-def get_cast(key: str, model: str, title: str, srt: str) -> Dict[str, Any]:
+def get_cast(key: str, model: str, title: str, srt: str, script: str = "") -> Dict[str, Any]:
     os.makedirs(CACHE, exist_ok=True)
-    path = _cache_path(title, model, srt)
+    path = _cache_path(title, model, srt, script)
     with _CACHE_LOCK:
         try:
             with open(path, "r", encoding="utf-8") as handle:
@@ -593,7 +678,12 @@ def get_cast(key: str, model: str, title: str, srt: str) -> Dict[str, Any]:
         except (OSError, ValueError, TypeError):
             pass
         log("pass 0: building cast sheet for", title)
-        raw = parse_json(chat(key, model, CAST_SYSTEM, CAST_USER.format(title=title, srt=srt), CAST_TEMP))
+        cast_prompt = CAST_USER.format(
+            title=title,
+            srt=srt,
+            script_context=script or "(No English screenplay provided; use subtitles only.)",
+        )
+        raw = parse_json(chat(key, model, CAST_SYSTEM, cast_prompt, CAST_TEMP))
         cast = _validate_cast(raw)
         # Atomic cache writes avoid a partially-written JSON file if the proxy
         # is interrupted while the model is responding.
@@ -855,12 +945,25 @@ def _repair_name_issues(key: str, model: str, clips: List[Dict[str, Any]], cast:
                 (clip_index + 1, ", ".join(best_issues)))
 
 
-def _polish_clips(key: str, model: str, clips: List[Dict[str, Any]], cast: Dict[str, Any], language: str) -> None:
+def _polish_clips(key: str, model: str, clips: List[Dict[str, Any]], cast: Dict[str, Any],
+                  language: str, srt: str) -> None:
     cast_summary = cast_text(cast)
     for start in range(0, len(clips), BATCH):
         part = clips[start:start + BATCH]
         original = [clip["narration"] for clip in part]
-        items = "\n".join("%d. %s" % (i + 1, text) for i, text in enumerate(original))
+        item_blocks = []
+        for index, (clip, narration) in enumerate(zip(part, original), 1):
+            evidence = _subtitle_window(srt, clip["start"], clip["end"])
+            item_blocks.append(
+                "CLIP %d [%s-%s]\nDRAFT NARRATION: %s\nSUBTITLE CUES:\n%s" % (
+                    start + index,
+                    format_seconds(clip["start"]),
+                    format_seconds(clip["end"]),
+                    narration,
+                    evidence or "(No subtitle cue overlaps this clip window.)",
+                )
+            )
+        items = "\n\n".join(item_blocks)
         prompt = POLISH_USER.format(
             language=language or "English",
             cast=cast_summary,
@@ -885,12 +988,14 @@ def _polish_clips(key: str, model: str, clips: List[Dict[str, Any]], cast: Dict[
 
 
 def build_plan(key: str, model: str, title: str, source_srt: str, n_clips: int,
-               length_rules: Sequence[str], language: str = "English") -> Dict[str, Any]:
+               length_rules: Sequence[str], language: str = "English",
+               source_script: str = "") -> Dict[str, Any]:
     srt = compact_srt(source_srt)
+    script = clean_script_text(source_script)
     cues = parse_subtitle_cues(srt)
     if not cues:
         raise ProxyError("could not parse any subtitle timestamps; request was not rewritten")
-    cast = get_cast(key, model, title, srt)
+    cast = get_cast(key, model, title, srt, script)
     srt = normalize_srt(srt, cast)
     boundaries = _subtitle_boundaries(srt)
     if not boundaries:
@@ -918,6 +1023,7 @@ def build_plan(key: str, model: str, title: str, source_srt: str, n_clips: int,
         language=language or "English",
         setting=cast.get("setting", "unclear"),
         cast=cast_text(cast),
+        script_context=script or "(No screenplay supplied; rely on subtitle windows only.)",
         n_clips=n_clips,
         opening_rule=opening_rule,
         outro_rule=outro_rule,
@@ -934,7 +1040,7 @@ def build_plan(key: str, model: str, title: str, source_srt: str, n_clips: int,
 
     if POLISH:
         log("pass 2: polishing %d clips in batches of %d ..." % (len(clips), BATCH))
-        _polish_clips(key, model, clips, cast, language)
+        _polish_clips(key, model, clips, cast, language, srt)
     _repair_name_issues(key, model, clips, cast, srt, language)
     _ensure_intro_outro(clips, profile)
 
@@ -1032,8 +1138,9 @@ class Handler(BaseHTTPRequestHandler):
                 log("non-recap chat request -> forwarding unchanged")
                 response = forward_chat_request(body, key)
             else:
-                log("movie request: %r; %d clips; %d subtitle characters; language=%s" %
-                    (context.title, context.n_clips, len(context.srt), context.language))
+                script, script_source = select_script_context(context.title, context.script)
+                log("movie request: %r; %d clips; %d subtitle characters; %d script characters (%s); language=%s" %
+                    (context.title, context.n_clips, len(context.srt), len(script), script_source, context.language))
                 result = build_plan(
                     key=key,
                     model=model,
@@ -1042,6 +1149,7 @@ class Handler(BaseHTTPRequestHandler):
                     n_clips=context.n_clips,
                     length_rules=context.length_rules,
                     language=context.language,
+                    source_script=script,
                 )
                 response = {
                     "id": "chatcmpl-humanizer",
