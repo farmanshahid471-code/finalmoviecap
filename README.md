@@ -191,6 +191,8 @@ executable and in up to 5 parent folders, then switches to it.
 - `install_tools.ps1` — portable FFmpeg downloader (called by `run.bat`; installs to `F:\AI-Movie-Shorts\tools`)
 - `humanizer_proxy.py`, `prompts.py` — local DeepSeek proxy with cast-sheet, draft, polish, and validation passes
 - `tests\test_humanizer_proxy.py` — offline tests for prompt parsing, subtitles, names, and clip validation
+- `scene_pipeline.py` — renders one narration-length movie scene (see *Narration-length scene render* below)
+- `tests\test_scene_pipeline.py` — tests for the scene render (media tests need `ffmpeg` on `PATH`)
 - `tools\mock_api_server.py` — offline stand-in for the OpenAI + ElevenLabs APIs
   and for the three free narration contracts (XTTS `/tts_to_audio/`, Piper
   `/synthesize`, OpenAI-compatible `/audio/speech`) — for testing
@@ -548,6 +550,30 @@ If auto-fetch fails, you can manually add:
 Then rerun. Check the generation log to confirm the script was loaded; if it says it is using subtitles only, the script did not reach INPUT B.
 
 ---
+
+## Narration-length scene render (`scene_pipeline.py`)
+
+`scene_pipeline.py` renders one movie scene with the **video cut to the length of the narration**, not stretched to fit it. It is a standalone script; the app does not call it. It runs four steps and checks each one:
+
+1. `edge_tts_synth.py` narrates the text into `narration.mp3`, and ffprobe reads its exact length. The MP3 is decoded first, because ffprobe's length for an MP3 includes encoder padding and can be longer than the audio.
+2. FFmpeg cuts the movie from `--start` for exactly that length, video only. The cut is re-encoded, because stream copy can only start on a keyframe.
+3. `whisper_transcribe.py` transcribes the raw `narration.mp3`, not the clip. The script prints the last subtitle and warns if it ends in an ellipsis, if the narration's final words are not at the end of the subtitles, if it runs past the audio, or if it ends more than 0.5 s before the audio does.
+4. FFmpeg muxes the clip video with the uncut narration audio and burns `narration.srt` in with the `subtitles` filter. Captions use Inter at about 3.5 % of the frame height, the app's caption size.
+
+```bat
+python scene_pipeline.py --movie "movies\MyMovie.mp4" --start 120.5 --text-file scene.txt ^
+  --python "F:\AI-Movie-Shorts\tools\piper\python\python.exe" ^
+  --ffmpeg-dir "F:\AI-Movie-Shorts\tools\ffmpeg\bin" ^
+  --whisper-cache "F:\AI-Movie-Shorts\tools\hf-cache"
+```
+
+- The paths above are the default tools folder `F:\AI-Movie-Shorts\tools`. Use your `<tools>` folder if `run.bat` chose another one.
+- `--python` must have `edge-tts` and `faster-whisper` installed. `run.bat` installs both into the private Python above.
+- Outputs go to `clips\scene\`: `final_scene.mp4` and the intermediate files. `--workdir` and `--out` change the locations.
+- The clip and the final video must match the narration length to within one frame, the final audio to within 0.05 s, and the final file must have one video stream and one audio stream. Video is whole frames, so at 24 fps a 3.700 s narration gives 3.708 s of video. A failed check deletes the file it was checking.
+- Chinese captions need a font with CJK glyphs, for example `--caption-font "C:\Windows\Fonts\msyh.ttc" --caption-font-name "Microsoft YaHei"`.
+- Edge TTS needs internet access. The first Whisper run downloads the model.
+- Tests: `python -m unittest discover -s tests`. The media tests are skipped unless `ffmpeg` and `ffprobe` are on `PATH`.
 
 ## Vertical output
 
