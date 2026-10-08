@@ -333,12 +333,14 @@ The default app path calls the configured provider directly. For DeepSeek, use
 The compiled app prompt treats **INPUT A** as the timestamped subtitle track and
 **INPUT B** as optional script text for story context; the script is not a source
 of clip timecodes. To provide the target movie's script, place it beside the SRT
-as `scripts/srt_files/<MovieTitle>.txt` (for example, `Toy Story 5.txt` beside
-`Toy Story 5.srt`). Do not name this file `recap_style_example.txt`: that name is
-only for the optional local proxy and is ignored by the direct app path. If the
-log says “No IMSDb script available; using subtitles only,” the script was not
-loaded into INPUT B. A log saying it will retry without the script means the
-request was too large and the script context was dropped.
+as `scripts/srt_files/<MovieTitle>_summary.txt` (for example,
+`Toy Story 5_summary.txt` beside `Toy Story 5.srt`). The direct executable uses
+this `_summary.txt` cache name; a plain `<MovieTitle>.txt` is not picked up by
+its native script loader. Do not name this file `recap_style_example.txt`: that
+name is only for the optional local proxy and is ignored by the direct app path.
+If the log says “No IMSDb script available; using subtitles only,” the script
+was not loaded into INPUT B. A log saying it will retry without the script means
+the request was too large and the script context was dropped.
 
 The direct app uses its built-in prompt, not the custom prompt changes in the
 optional humanizer proxy. The SRT provides timing, but neither text source lets
@@ -541,7 +543,7 @@ If no music files exist, output will be narration-only.
 
 If auto-fetch fails, you can manually add:
 - `scripts\srt_files\<MovieTitle>.srt`
-- `scripts\srt_files\<MovieTitle>.txt` for the target movie's same-movie script context (for example, `Toy Story 5.txt` beside `Toy Story 5.srt`).
+- `scripts\srt_files\<MovieTitle>_summary.txt` for direct-app script context (for example, `Toy Story 5_summary.txt` beside `Toy Story 5.srt`).
 
 Then rerun. Check the generation log to confirm the script was loaded; if it says it is using subtitles only, the script did not reach INPUT B.
 
