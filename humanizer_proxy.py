@@ -60,7 +60,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = _env_int("PORT", 9200, 1, 65535)
 POLISH = os.environ.get("POLISH", "1") != "0"
 CAST_TEMP = _env_float("CAST_TEMP", 0.3)
-DRAFT_TEMP = _env_float("DRAFT_TEMP", 0.9)
+DRAFT_TEMP = _env_float("DRAFT_TEMP", 0.75)
 POLISH_TEMP = _env_float("POLISH_TEMP", 0.7)
 BATCH = _env_int("BATCH", 25, 1, 100)
 NAME_RETRIES = _env_int("NAME_RETRIES", 2, 0, 5)
@@ -71,8 +71,8 @@ CACHE = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "cast_cache"),
 )
 OUTRO_EN = (
-    "With that the story ends right here. Let us know in the comments how you liked this "
-    "explanation and don't forget to like the video and subscribe to the channel."
+    "If you enjoyed the video, don't forget to leave a like, subscribe, and turn on "
+    "notifications. That's all for today. See you next time."
 )
 
 # The compiled app exposes these four recap languages. Keep every sign-off in
@@ -81,25 +81,33 @@ LANGUAGE_PROFILES = (
     {
         "keys": ("chinese", "mandarin", "中文", "zh"),
         "name": "Mandarin Chinese (Simplified characters)",
-        "opening": "故事开始",
-        "outro": "故事就到这里。欢迎在评论区告诉我们你对这段解说的看法，别忘了点赞并订阅频道。",
+        "opening": "一切都从这里开始",
+        "opening_separator": "，",
+        "outro_separator": "",
+        "outro": "如果你喜欢这期视频，别忘了点赞、订阅并开启通知。今天就到这里，我们下次再见。",
     },
     {
         "keys": ("arabic", "العربية", "ar"),
         "name": "Modern Standard Arabic",
-        "opening": "تبدأ القصة",
-        "outro": "وهنا تنتهي القصة. أخبرونا في التعليقات برأيكم في هذا الشرح، ولا تنسوا الإعجاب بالفيديو والاشتراك في القناة.",
+        "opening": "تبدأ الحكاية",
+        "opening_separator": "، ",
+        "outro_separator": " ",
+        "outro": "إذا أعجبكم الفيديو، فلا تنسوا الإعجاب به والاشتراك وتفعيل الإشعارات. هذا كل شيء لهذا اليوم. نراكم في المرة القادمة.",
     },
     {
         "keys": ("spanish", "español", "es"),
         "name": "Spanish (neutral Latin American)",
-        "opening": "La historia comienza",
-        "outro": "Y así termina la historia. Cuéntanos en los comentarios qué te pareció esta explicación y no olvides darle me gusta al video y suscribirte al canal.",
+        "opening": "Todo comienza",
+        "opening_separator": "... ",
+        "outro_separator": " ",
+        "outro": "Si te gustó el video, no olvides dejar un me gusta, suscribirte y activar las notificaciones. Eso es todo por hoy. Nos vemos la próxima vez.",
     },
     {
         "keys": ("english", "en"),
         "name": "English",
-        "opening": "The story begins",
+        "opening": "It all begins",
+        "opening_separator": "... ",
+        "outro_separator": " ",
         "outro": OUTRO_EN,
     },
 )
@@ -344,6 +352,11 @@ def parse_bot_prompt(system: str, user: str) -> Optional[BotPrompt]:
 
 def clean_subtitle_text(text: str) -> str:
     text = html.unescape(text or "")
+    text = re.sub(
+        r"\[(?:music|applause|laughter|laughs|sighs|inaudible|silence|gasps|crosstalk|static)\]",
+        " ", text, flags=re.IGNORECASE,
+    )
+    text = re.sub(r"(?<!\S)(?:>{2,}|<{2,})(?!\S)", " ", text)
     text = TAG_RE.sub(" ", text)
     text = re.sub(r"\{\\(?:an\d+|pos\([^}]*\)|i\d*|b\d*|u\d*)\}", " ", text, flags=re.IGNORECASE)
     # Remove literal escaped line separators, subtitle speaker dashes and junk
@@ -771,7 +784,8 @@ def _ensure_intro_outro(clips: List[Dict[str, Any]], profile: Dict[str, str]) ->
     opening = profile["opening"]
     first = clips[0]["narration"].lstrip()
     if opening and not first.casefold().startswith(opening.casefold()):
-        clips[0]["narration"] = opening + ("... " if opening.isascii() else "，") + first
+        separator = profile.get("opening_separator", " ")
+        clips[0]["narration"] = opening + separator + first
 
     outro = profile["outro"]
     if not outro:
@@ -783,7 +797,7 @@ def _ensure_intro_outro(clips: List[Dict[str, Any]], profile: Dict[str, str]) ->
             last = last[:-len(old_outro)].rstrip()
             break
     if not last.endswith(outro):
-        separator = "" if "Chinese" in profile.get("name", "") else " "
+        separator = profile.get("outro_separator", " ")
         clips[-1]["narration"] = (last + separator + outro).strip()
     else:
         clips[-1]["narration"] = last

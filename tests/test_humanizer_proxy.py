@@ -30,6 +30,10 @@ class SubtitleTests(unittest.TestCase):
             "[1.25-3.5] Jessie finds a key.\n[3.5-7.25] Jesse opens the door. Someone follows.",
         )
         self.assertEqual(proxy.parse_timepoint("01:23.5"), 83.5)
+        self.assertEqual(
+            proxy.clean_subtitle_text("&gt;&gt; [music] &gt;&gt; Jessie finds a key [laughter]"),
+            "Jessie finds a key",
+        )
 
     def test_compiled_prompt_parser_reads_language_from_system_and_user_from_user(self):
         system = (
@@ -97,10 +101,10 @@ class ValidationTests(unittest.TestCase):
 
     def test_all_compiled_languages_have_localized_signoffs(self):
         cases = [
-            ("English", "The story begins", "With that the story ends"),
-            ("Mandarin Chinese (Simplified characters)", "故事开始", "故事就到这里"),
-            ("Modern Standard Arabic", "تبدأ القصة", "وهنا تنتهي القصة"),
-            ("Spanish (neutral Latin American)", "La historia comienza", "Y así termina la historia"),
+            ("English", "It all begins", "If you enjoyed the video"),
+            ("Mandarin Chinese (Simplified characters)", "一切都从这里开始", "如果你喜欢这期视频"),
+            ("Modern Standard Arabic", "تبدأ الحكاية", "إذا أعجبكم الفيديو"),
+            ("Spanish (neutral Latin American)", "Todo comienza", "Si te gustó el video"),
         ]
         for language, opening, outro in cases:
             profile = proxy.language_profile(language)
@@ -114,7 +118,7 @@ class ValidationTests(unittest.TestCase):
             {"start": 20, "end": 30, "narration": "Jessie wins."},
         ]
         proxy._ensure_intro_outro(clips, profile)
-        self.assertTrue(clips[0]["narration"].startswith("故事开始"))
+        self.assertTrue(clips[0]["narration"].startswith("一切都从这里开始"))
         self.assertTrue(clips[-1]["narration"].endswith(profile["outro"]))
         self.assertNotIn(proxy.OUTRO_EN, clips[-1]["narration"])
 
@@ -127,7 +131,7 @@ class PipelineTests(unittest.TestCase):
 [30-40] Jessie finds the way home.
 """
         profile = proxy.language_profile("Mandarin Chinese (Simplified characters)")
-        first = "故事开始，Jessie发现一张旧地图。她想找到回家的路。"
+        first = "一切都从这里开始，Jessie发现一张旧地图。她想找到回家的路。"
         last = "Jessie找到了回家的路。Buzz给了她一个线索。" + profile["outro"]
         responses = [
             json.dumps({"setting": "unclear", "characters": [
@@ -163,7 +167,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(result["clips"]), 2)
         self.assertEqual(set(result["clips"][0].keys()), {"start", "end", "narration"})
         self.assertEqual([result["clips"][0]["start"], result["clips"][1]["start"]], [10, 20])
-        self.assertTrue(result["clips"][0]["narration"].startswith("故事开始"))
+        self.assertTrue(result["clips"][0]["narration"].startswith("一切都从这里开始"))
         self.assertTrue(result["clips"][-1]["narration"].endswith(profile["outro"]))
         self.assertNotIn("Buzz", result["clips"][-1]["narration"])
         self.assertIn(CAST_SYSTEM, seen_systems)
@@ -196,6 +200,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(proxy.language_profile("French")["opening"], "")
         self.assertIn("written only in French", seen_draft[0])
         self.assertIn("do not use the English sign-off", seen_draft[0])
+        self.assertIn("REFERENCE STORYTELLING MODE", seen_draft[0])
+        self.assertIn("one concrete event leads to the next", seen_draft[0])
+        self.assertIn("transcript debris such as [music]", seen_draft[0])
         self.assertEqual(result["clips"][0]["narration"], narration)
         self.assertNotIn(proxy.OUTRO_EN, result["clips"][0]["narration"])
 

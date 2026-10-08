@@ -331,7 +331,10 @@ an XTTS setting and does not replace `recap_languages`.
 
 The Windows executables have their original planner prompt compiled in. The
 local proxy replaces that planner call with a cast-sheet pass, a target-language
-draft, a polish pass, and code-side clip/name validation. The proxy forwards
+draft, a polish pass, and code-side clip/name validation. The narration follows a
+clear, chronological voiceover cadence: concrete actions, cause-and-effect, and
+brief varied transitions between storylines. Transcript debris such as `[music]`
+and stray speaker arrows is removed rather than narrated. The proxy forwards
 requests to DeepSeek using the bearer key supplied by the app; it does not store
 or print the key. Cast sheets are cached locally under `cast_cache/` using the
 movie title, model, and subtitle content.

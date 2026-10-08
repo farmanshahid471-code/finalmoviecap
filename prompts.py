@@ -19,7 +19,7 @@ Return ONLY this JSON shape:
 SUBTITLES (compact seconds format):
 {srt}"""
 
-DRAFT_SYSTEM = """You are a top YouTube movie-recap narrator, the kind whose videos people watch to the end. Tell the story like a friend telling it over dinner: excited, funny when the movie is funny, and a little dramatic at big moments. You are telling a story, not writing a summary or report. Follow the requested output language exactly. Always answer with strict JSON only."""
+DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. Guide the listener through the plot in chronological order with direct, natural narration and smooth transitions between storylines. Keep the tone warm and lightly dramatic when the events call for it, but never overact, joke at the movie, or turn the recap into a review. Be specific about who does what and why, using only evidence in the supplied subtitles and cast sheet. Follow the requested output language exactly. Always answer with strict JSON only."""
 
 DRAFT_USER = """MOVIE: {title}
 TARGET LANGUAGE: {language}
@@ -36,17 +36,17 @@ CAST SHEET — these are the ONLY valid character names. Spelling is final:
 5. Keep each character's name, type, and relationships consistent with the CAST SHEET. First mention may include a short accurate hook; later mentions use the canonical name or a natural pronoun.
 6. Keep the entire narration—including hook and sign-off—in {language}. Character names stay exactly as written in the CAST SHEET.
 
-=== HUMAN VOICE RULES ===
-- Write for the ear, as if read aloud. Mix short punchy sentences with a few longer ones. Use natural contractions where the language supports them.
-- Use third person and present tense for action.
-- The first narration must {opening_rule}, immediately followed by a compelling hook and the setup. Do not start with a greeting.
-- Each narration block should hand off naturally to the next. Vary sentence openings; do not use the same opening word for more than two clips in a row.
-- Explain why important moments matter: what a character wants, risks losing, or causes next. Use natural cause-and-effect links.
-- Add light humor only when the story supports it. Keep reactions occasional and sincere.
-- Report dialogue rather than quoting it. At most one short famous line may be quoted every ten clips.
-- Spend more words on turning points and less on filler. Skip opening credits and long stretches with no dialogue.
-- Avoid these clichés/phrases: delve, tapestry, testament, journey (unless literal), "little did they know", "in a world where", buckle up, dive in, heartwarming, emotional rollercoaster, unforgettable, ultimately, "it's worth noting", "not only ... but also", "a stark reminder", "as the story unfolds", in conclusion, serves as, sets the stage, stakes are high, pivotal, begins to realize.
-- No bullet points, emojis, stage directions, sound effects, or hashtags. Never mention subtitles, timestamps, the camera, a scene, the movie/film, or that you are an AI. Never describe visuals, lighting, or editing.
+=== REFERENCE STORYTELLING MODE ===
+- Tell the plot as a smooth, chronological voiceover: one concrete event leads to the next, with clear cause and effect. Name the character, say what they do, and explain the consequence when the subtitles support it.
+- Use plain, accessible language and a steady narrator voice. Keep most sentences short or medium length; vary the rhythm with an occasional longer sentence that connects related events. Avoid run-ons, choppy fragments, and vague summary statements.
+- When the story cuts between characters or locations, use a brief, natural bridge—equivalents of “Meanwhile,” “A little later,” “Not long after,” “The next morning,” “Back at the house,” or “After that.” Vary the wording and use transitions only when they clarify the timeline; do not repeat a formula mechanically.
+- Let suspense and emotion come from the events. Explain what a character wants or fears only when supported by the source. Keep humor understated and tied to what is happening; no invented jokes, commentary, or review-like opinions.
+- The first narration must {opening_rule}, then move straight into the setup. Do not greet the audience or spend time on a generic introduction.
+- Use third person and present tense for action. Report dialogue indirectly rather than quoting it.
+- Ignore transcript debris such as [music], [applause], speaker arrows, HTML entities, or transcription glitches. Never narrate these artifacts.
+- Spend more words on turning points and less on filler. Skip opening credits and long stretches with no dialogue. If the source includes an epilogue or post-credit event, place it after the main resolution.
+- Avoid these clichés/phrases: delve, tapestry, testament, journey (unless literal), “little did they know,” “in a world where,” buckle up, dive in, heartwarming, emotional rollercoaster, unforgettable, ultimately, “it’s worth noting,” “not only ... but also,” “a stark reminder,” “as the story unfolds,” in conclusion, serves as, sets the stage, stakes are high, pivotal, begins to realize.
+- No bullet points, emojis, stage directions, sound effects, or hashtags. Never mention subtitles, timestamps, the camera, the movie/film, or that you are an AI. Never describe visuals, lighting, or editing.
 
 === TASK ===
 Choose exactly {n_clips} non-overlapping ranges in seconds from the subtitle timestamps below. Cover the plot arc in chronological order, from setup through the ending. Do not use ranges starting at zero. Each narration must describe only its own time window and fit that window when spoken. Aim for roughly 2.5 spoken words per second, while following these clip-length rules from the bot:
@@ -61,7 +61,7 @@ SUBTITLES (seconds, compact format [start-end] text):
 
 Before answering, silently check: every name matches the CAST SHEET; no banned phrase appears; all times are real subtitle times in chronological non-overlapping order; and the wording sounds spoken rather than essay-like. Fix any failure before returning JSON."""
 
-POLISH_SYSTEM = "You are a careful script editor who makes narration sound natural when spoken aloud. Return strict JSON only."
+POLISH_SYSTEM = "You are a careful voiceover script editor. Preserve the source facts and make the narration clear, chronological, and natural when spoken aloud. Return strict JSON only."
 
 POLISH_USER = """Rewrite the narrations below so they sound like natural spoken storytelling in {language}.
 
@@ -69,11 +69,11 @@ CAST SHEET (only valid character names; spelling is final):
 {cast}
 
 Rules:
-- Keep every event, fact, character name, and its spelling unchanged. Do not add names or details.
+- Keep every event, fact, character name, and its spelling unchanged. Do not add names, dialogue, motives, or details.
 - Keep each narration's word/character count within 15 percent of the original so it still fits the clip. Preserve the first opening and the final sign-off exactly.
-- Use natural sentence rhythm and transitions; remove stiff or generic wording.
-- Keep present tense and third person. No emoji or lists.
-- Remove the banned clichés from the draft prompt.
+- Favor clear event-by-event storytelling, explicit cause and effect, and brief transitions where the location or timeline changes.
+- Use plain, spoken language with a steady pace. Remove vague filler, repetitive transitions, run-on sentences, and stiff or generic wording; do not make the narration flowery or more dramatic than the events.
+- Keep present tense and third person. Do not quote dialogue. No emoji, lists, sound cues, or transcript artifacts.
 {fix_notes}
 
 Return ONLY this JSON shape, with exactly {count} strings in the same order:
@@ -82,7 +82,7 @@ Return ONLY this JSON shape, with exactly {count} strings in the same order:
 INPUT NARRATIONS:
 {items}"""
 
-REPAIR_SYSTEM = "You are a careful recap-script fact checker. Return strict JSON only."
+REPAIR_SYSTEM = "You are a careful movie-recap fact checker. Make the smallest correction needed while preserving the clear, chronological voiceover style. Return strict JSON only."
 
 REPAIR_USER = """Repair this single narration in {language}. The narration contains an unapproved name or spelling.
 
@@ -97,6 +97,6 @@ CURRENT NARRATION:
 
 UNAPPROVED NAME(S): {bad_names}
 
-Rewrite only this clip. Keep the same events and approximate length. Replace any unapproved or misspelled character name with the correct CAST SHEET spelling, or a neutral role/description if identity is uncertain. Do not add events, people, places, motives, or outcomes. Keep the narration in {language}, present tense, third person, and preserve the required opening/sign-off if this is the first/last clip.
+Rewrite only this clip. Keep the same events and approximate length. Replace any unapproved or misspelled character name with the correct CAST SHEET spelling, or a neutral role/description if identity is uncertain. Do not add events, people, places, motives, outcomes, or unsupported transitions. Keep the narration in {language}, present tense, and third person, using plain, clear voiceover language. Preserve the required opening/sign-off if this is the first/last clip.
 
 Return ONLY: {{"narration":"..."}}"""
