@@ -90,6 +90,17 @@ class ScriptContextTests(unittest.TestCase):
         second = proxy._cache_path("Movie", "deepseek-v4-pro", "[1-2] Hello", "script B")
         self.assertNotEqual(first, second)
 
+    def test_global_style_example_is_loaded_separately_from_target_script(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, "recap_style_example.txt").write_text(
+                "A sample narrator uses brisk transitions. No plot facts should transfer.",
+                encoding="utf-8",
+            )
+            with patch.object(proxy, "SCRIPT_DIR", folder):
+                sample, filename = proxy.load_style_example()
+        self.assertEqual(filename, "recap_style_example.txt")
+        self.assertIn("brisk transitions", sample)
+
 
 class ValidationTests(unittest.TestCase):
     def setUp(self):
@@ -171,6 +182,7 @@ class PipelineTests(unittest.TestCase):
         seen_systems = []
         seen_users = []
         source_script = "FADE IN. Jessie discovers that the island changes everything."
+        style_example = "A different movie's recap uses quick bridges and simple narration."
 
         def fake_chat(key, model, system, user, temperature, timeout=900):
             seen_systems.append(system)
@@ -189,6 +201,7 @@ class PipelineTests(unittest.TestCase):
                 length_rules=["Each clip should fit its timestamps."],
                 language="Mandarin Chinese (Simplified characters)",
                 source_script=source_script,
+                style_example=style_example,
             )
 
         self.assertEqual(set(result.keys()), {"clips"})
@@ -204,7 +217,12 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(REPAIR_SYSTEM, seen_systems)
         self.assertIn(source_script, seen_users[0])
         self.assertIn(source_script, seen_users[1])
-        self.assertIn("SUBTITLE / SCRIPT ALIGNMENT", seen_users[1])
+        self.assertNotIn(style_example, seen_users[0])
+        self.assertIn(style_example, seen_users[1])
+        self.assertIn("STYLE EXAMPLE ONLY", seen_users[1])
+        self.assertIn("distinctive phrases", seen_users[1])
+        self.assertIn("use its plot", seen_users[1])
+        self.assertIn("TARGET STORY-TO-SUBTITLE ALIGNMENT", seen_users[1])
         self.assertIn("CLIPS, DRAFT NARRATIONS, AND TIME-ALIGNED SUBTITLE EVIDENCE", seen_users[2])
         self.assertIn("[10-20] Jessie enters the room.", seen_users[2])
         self.assertEqual(responses, [])
@@ -234,7 +252,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("written only in French", seen_draft[0])
         self.assertIn("do not use the English sign-off", seen_draft[0])
         self.assertIn("REFERENCE STORYTELLING MODE", seen_draft[0])
-        self.assertIn("one concrete event leads to the next", seen_draft[0])
+        self.assertIn("one concrete story beat leads to the next", seen_draft[0])
         self.assertIn("transcript debris such as [music]", seen_draft[0])
         self.assertEqual(result["clips"][0]["narration"], narration)
         self.assertNotIn(proxy.OUTRO_EN, result["clips"][0]["narration"])

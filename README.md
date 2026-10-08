@@ -339,19 +339,23 @@ requests to DeepSeek using the bearer key supplied by the app; it does not store
 or print the key. Cast sheets are cached locally under `cast_cache/` using the
 movie title, model, and subtitle content.
 
-To use your own English screenplay, upload a matching pair into the **Subtitles**
-tab (the `scripts/srt_files/` folder): for example, `Toy Story 5.srt` and
-`Toy Story 5.txt`. Plain UTF-8 `.txt` is preferred; `.md` is also accepted. The
-uploaded script takes precedence over a scraped script. Set `openai_model` to
-`deepseek-v4-pro`, use a valid DeepSeek key, keep `openai_base_url` on the local
-proxy, and save the settings before starting.
+To upload a **recap script as a style example**, put it in the **Subtitles** tab
+(`scripts/srt_files/`) as `recap_style_example.txt`. `style_example.txt` and
+`recap_example.txt` are also recognized. Upload the target movie's timestamped
+subtitle file separately, named for the movie (for example, `Toy Story 5.srt`).
+Use UTF-8 `.txt` for the example; the proxy caps long examples to keep requests
+manageable. If you also have the target movie's actual screenplay, upload it as
+`Toy Story 5.txt` or `Toy Story 5_script.txt` for additional plot context.
 
-The proxy uses screenplay text only for story context and name disambiguation;
-the timestamped SRT is authoritative for clip timing, chronology, and what may
-be narrated in each selected window. This reduces script/subtitle mismatches,
-but the proxy does not inspect video frames, so it cannot guarantee frame-level
-visual matching for silent action. That would require a separate video-frame
-vision check.
+Set `openai_model` to `deepseek-v4-pro`, enter a valid DeepSeek key, keep
+`openai_base_url` on the local proxy, and save settings before starting. DeepSeek
+uses the uploaded example for narration style only—not its names, plot, or
+timestamps. It uses the target SRT to plan real clip times and events; any
+same-movie screenplay is optional context.
+
+The proxy cannot inspect video frames, so SRT time alignment reduces mismatch
+but cannot guarantee frame-level matching for silent action. That requires a
+separate vision check on sampled frames from the actual movie.
 
 The checked-in `config.json` points `openai_base_url` at
 `http://127.0.0.1:9200/v1`. Start the proxy in one terminal and leave it running,

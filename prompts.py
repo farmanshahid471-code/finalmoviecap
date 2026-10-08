@@ -5,24 +5,24 @@ CAST_SYSTEM = (
     "Use only evidence in the supplied dialogue."
 )
 
-CAST_USER = """Below are the subtitles of the movie {title!r}. Subtitles have no speaker labels and may contain typos.
+CAST_USER = """Build a CAST SHEET for {title!r} from the target movie's timestamped subtitles and optional screenplay. Subtitles have no speaker labels and may contain typos.
 
-Build a CAST SHEET of named characters actually mentioned in the dialogue. Return:
-- setting: one short line about where/when the story takes place, based only on dialogue; use "unclear" when unknown
-- characters: a JSON array; each item has name (canonical spelling), variants (other spellings/typos found), who (one short evidence-based description), relations (one short line), and mentions (rough non-negative count)
+Return:
+- setting: one short line about where/when the target story takes place; use "unclear" when unknown
+- characters: a JSON array; each item has name (canonical spelling), variants (other spellings/typos found in the subtitles), who (one short evidence-based description), relations (one short line), and mentions (rough non-negative count)
 
-Use the subtitles as the source of truth for the movie's final-cut dialogue and character spellings. The optional script is supplementary context: use it to resolve a relationship or spelling only when consistent with the subtitles. Do not include a character, event, location, or detail merely because it appears in the script; it must also be relevant to the subtitle track. Do not use memory of the movie, its sequels, or the franchise. Do not invent anything. Use "unclear" when evidence is insufficient.
+Use only the target movie's sources for character names and plot facts. The optional target screenplay may clarify character roles and canonical spellings; the timestamped subtitles identify the final-cut dialogue and timeline. Do not use an uploaded style example for names, events, or setting. Do not use memory of the movie, sequels, or franchise. Do not invent anything beyond the target movie's sources.
 
 Return ONLY this JSON shape:
 {{"setting":"...","characters":[{{"name":"...","variants":[],"who":"...","relations":"...","mentions":0}}]}}
 
-SUBTITLES (compact seconds format; authoritative):
-{srt}
+OPTIONAL TARGET MOVIE SCREENPLAY:
+{script_context}
 
-OPTIONAL ENGLISH SCRIPT CONTEXT (may be a different draft; context only):
-{script_context}"""
+TARGET MOVIE SUBTITLES (compact seconds format):
+{srt}"""
 
-DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. Guide the listener through the plot in chronological order with direct, natural narration and smooth transitions between storylines. Keep the tone warm and lightly dramatic when the events call for it, but never overact, joke at the movie, or turn the recap into a review. Be specific about who does what and why, using only evidence in the supplied subtitles and cast sheet. Follow the requested output language exactly. Always answer with strict JSON only."""
+DRAFT_SYSTEM = """You write clear, engaging long-form movie-recap voiceovers. Use the target movie's timestamped subtitles as the authoritative source for its events and timeline; use its optional screenplay only as matching story context. A separate uploaded recap script is a style example only, never a source of target plot or names. Guide the listener through the target plot chronologically with direct, natural narration. Keep the tone warm and lightly dramatic when events call for it, but never overact, joke at the movie, or turn the recap into a review. Align every narration to real subtitle times. Follow the requested output language exactly. Always answer with strict JSON only."""
 
 DRAFT_USER = """MOVIE: {title}
 TARGET LANGUAGE: {language}
@@ -31,25 +31,36 @@ SETTING (from dialogue only): {setting}
 CAST SHEET — these are the ONLY valid character names. Spelling is final:
 {cast}
 
-OPTIONAL ENGLISH SCREENPLAY (story context only; it may differ from the final cut):
+UPLOADED RECAP SCRIPT — STYLE EXAMPLE ONLY (may be another movie):
+{style_example}
+
+OPTIONAL SCREENPLAY FOR THE TARGET MOVIE — plot context only:
 {script_context}
 
-=== SUBTITLE / SCRIPT ALIGNMENT ===
-- The timestamped subtitles are authoritative for the final cut: use them to select ranges, order events, and determine what is happening inside each clip window.
-- Use the screenplay only to clarify a name or motivation when that context agrees with the subtitles. Never import a screenplay-only scene, action, prop, or outcome into a clip.
-- Do not move an event to another timestamp because it appears elsewhere in the screenplay. If script and subtitles conflict, follow the subtitle window and keep the narration conservative.
-- Every narration must match the dialogue and story beat in its own selected time window. Do not use later script context to describe an event before it occurs.
+TARGET MOVIE SUBTITLES — content timeline and timecode source:
+{srt}
+
+=== KEEP STYLE AND STORY SOURCES SEPARATE ===
+- Use the uploaded example only to learn high-level narration cadence, sentence rhythm, transitions, level of detail, and opening/closing structure. Never copy its sentences or distinctive phrases, or use its plot, names, locations, props, dialogue, or timestamps in the target recap.
+- The target movie's subtitles provide the timestamped timeline and evidence of what is in this cut. If a matching screenplay for this same movie is supplied, use it to clarify actions and motivations; never treat it as a style sample.
+- If no target-movie screenplay is supplied, build the story only from the target movie's subtitles. Do not borrow story events from the style example or movie memory.
+
+=== TARGET STORY-TO-SUBTITLE ALIGNMENT ===
+- Before drafting, silently map target-movie story beats to nearby subtitle cues by matching dialogue, character names, and sequence. Use only real subtitle cue boundaries for clip start/end times; never guess or evenly distribute timestamps.
+- Each narration must describe a target-movie beat aligned to its own subtitle time window. A silent screenplay action may be included when a matching same-movie screenplay and surrounding cues establish where it occurs.
+- Do not shift a beat to unrelated dialogue or narrate it before it occurs. If a same-movie screenplay and subtitle sequence conflict, follow the final-cut subtitle timeline; if there is no reliable match, omit the beat or use a brief neutral description.
+- Keep each clip tied to its selected time window so the narration follows the corresponding movie segment.
 
 === ACCURACY RULES ===
 1. Use only character names from the CAST SHEET, spelled exactly as given. Never invent or import a name from memory, a sequel, or a franchise.
 2. Subtitles have no speaker labels. If unsure who speaks or acts, do not guess a name; use a neutral description or rephrase.
-3. Narrate only events supported by the subtitle text inside the chosen time range. Never invent a plot point, place, motive, or outcome.
+3. Narrate only events from the target movie, using its subtitles and any matching target-movie screenplay; align every event to this clip's subtitle time window. Never take plot facts from the uploaded style example or invent a plot point, place, motive, or outcome.
 4. Keep strict chronological order. Never reveal later events early or mention events outside the selected range.
 5. Keep each character's name, type, and relationships consistent with the CAST SHEET. First mention may include a short accurate hook; later mentions use the canonical name or a natural pronoun.
 6. Keep the entire narration—including hook and sign-off—in {language}. Character names stay exactly as written in the CAST SHEET.
 
 === REFERENCE STORYTELLING MODE ===
-- Tell the plot as a smooth, chronological voiceover: one concrete event leads to the next, with clear cause and effect. Name the character, say what they do, and explain the consequence when the subtitles support it.
+- Tell the target plot as a smooth, chronological voiceover: one concrete story beat leads to the next, with clear cause and effect. Name the character, say what they do, and explain the consequence when target-movie evidence supports it.
 - Use plain, accessible language and a steady narrator voice. Keep most sentences short or medium length; vary the rhythm with an occasional longer sentence that connects related events. Avoid run-ons, choppy fragments, and vague summary statements.
 - When the story cuts between characters or locations, use a brief, natural bridge—equivalents of “Meanwhile,” “A little later,” “Not long after,” “The next morning,” “Back at the house,” or “After that.” Vary the wording and use transitions only when they clarify the timeline; do not repeat a formula mechanically.
 - Let suspense and emotion come from the events. Explain what a character wants or fears only when supported by the source. Keep humor understated and tied to what is happening; no invented jokes, commentary, or review-like opinions.
@@ -68,10 +79,7 @@ Reserve enough room in the final clip for the localized sign-off. {outro_rule}
 Return ONLY valid JSON, no markdown or commentary, in the bot's exact schema:
 {{"clips":[{{"start":120,"end":135,"narration":"..."}}]}}
 
-SUBTITLES (seconds, compact format [start-end] text):
-{srt}
-
-Before answering, silently check: every name matches the CAST SHEET; no banned phrase appears; all times are real subtitle times in chronological non-overlapping order; and the wording sounds spoken rather than essay-like. Fix any failure before returning JSON."""
+Before answering, silently check: every narration beat is mapped to the screenplay and its matching subtitle window; every name matches the CAST SHEET; no banned phrase appears; and all times are real subtitle boundaries in chronological non-overlapping order. Fix any failure before returning JSON."""
 
 POLISH_SYSTEM = "You are a careful voiceover script editor. Preserve the source facts and make the narration clear, chronological, and natural when spoken aloud. Return strict JSON only."
 
@@ -80,10 +88,11 @@ POLISH_USER = """Polish the narrations below into natural, clear voiceover in {l
 CAST SHEET (canonical spellings):
 {cast}
 
-Grounding and style rules:
-- Use the subtitle cues for the item's own time window as the authority for what can be narrated there. Do not move an event to another time window.
-- If a detail from the screenplay or draft is not supported by this clip's cues, remove it or make the narration neutral. Never add an event, character, prop, motive, or outcome.
-- Keep every supported event and canonical character name. Do not add dialogue or quote lines.
+Screenplay/subtitle alignment rules:
+- The screenplay is the source for plot actions; the subtitle cues anchor the clip to the movie timeline and dialogue. Do not move an event to another time window.
+- Preserve screenplay-derived silent actions in the draft when their order matches this clip's subtitle window. Do not delete an action only because it is not spoken in the subtitles.
+- If the cues clearly conflict with the draft's timing or event order, make the smallest conservative correction. Never add a new event, character, prop, motive, or outcome.
+- Keep canonical character names. Do not add dialogue or quote lines.
 - Keep each narration's word/character count within 15 percent of its draft so it still fits the clip. Preserve the first opening and final sign-off exactly.
 - Use direct, chronological voiceover with clear cause and effect, plain spoken language, and brief transitions only when useful. Avoid run-ons, vague filler, repetition, and ornate or overdramatic wording.
 - Keep present tense and third person. No emoji, lists, sound cues, or transcript artifacts.

@@ -66,6 +66,7 @@ BATCH = _env_int("BATCH", 25, 1, 100)
 NAME_RETRIES = _env_int("NAME_RETRIES", 2, 0, 5)
 MAX_SRT_CHARS = _env_int("MAX_SRT_CHARS", 250000, 20000, 2_000_000)
 MAX_SCRIPT_CHARS = _env_int("MAX_SCRIPT_CHARS", 120000, 10000, 500000)
+MAX_STYLE_EXAMPLE_CHARS = _env_int("MAX_STYLE_EXAMPLE_CHARS", 18000, 2000, 50000)
 MAX_BODY_BYTES = _env_int("MAX_BODY_BYTES", 20 * 1024 * 1024, 1024, 100 * 1024 * 1024)
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_DIR = os.environ.get("SCRIPT_DIR", os.path.join(PROJECT_DIR, "scripts", "srt_files"))
@@ -318,20 +319,21 @@ class BotPrompt:
     script: str = ""
 
 
-def clean_script_text(script: str) -> str:
-    """Normalize an uploaded or embedded screenplay and bound its prompt size."""
+def clean_script_text(script: str, max_chars: Optional[int] = None) -> str:
+    """Normalize an uploaded text source and bound its prompt size."""
+    limit = max_chars or MAX_SCRIPT_CHARS
     text = html.unescape(script or "").replace("\x00", " ")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = "\n".join(line.rstrip() for line in text.splitlines())
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    if len(text) > MAX_SCRIPT_CHARS:
-        keep = max(1, (MAX_SCRIPT_CHARS - 100) // 2)
+    if len(text) > limit:
+        keep = max(1, (limit - 100) // 2)
         text = (
             text[:keep].rstrip()
             + "\n\n[Middle of screenplay omitted to fit context; subtitles remain authoritative.]\n\n"
             + text[-keep:].lstrip()
         )
-        log("WARNING: screenplay context exceeded %d characters; retained beginning and ending" % MAX_SCRIPT_CHARS)
+        log("WARNING: text context exceeded %d characters; retained beginning and ending" % limit)
     return text
 
 
@@ -433,6 +435,34 @@ def select_script_context(title: str, embedded_script: str) -> Tuple[str, str]:
     if embedded:
         return embedded, "script embedded in app prompt"
     return "", "none (subtitles only)"
+
+
+def load_style_example() -> Tuple[str, str]:
+    """Read a global recap-style sample from scripts/srt_files without treating its plot as target content."""
+    override = os.environ.get("STYLE_EXAMPLE_FILE", "").strip()
+    if override:
+        candidates = [override if os.path.isabs(override) else os.path.join(SCRIPT_DIR, override)]
+    else:
+        candidates = [
+            os.path.join(SCRIPT_DIR, name)
+            for name in ("recap_style_example.txt", "style_example.txt", "recap_example.txt", "recap_style_example.md")
+        ]
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            if os.path.getsize(path) > 5 * 1024 * 1024:
+                log("WARNING: style example is over 5 MB; ignoring", os.path.basename(path))
+                continue
+            with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+                text = clean_script_text(handle.read(), MAX_STYLE_EXAMPLE_CHARS)
+        except OSError as exc:
+            log("WARNING: could not read style example", os.path.basename(path), exc)
+            continue
+        if text:
+            log("loaded recap style example:", os.path.basename(path), "(%d characters)" % len(text))
+            return text, os.path.basename(path)
+    return "", ""
 
 
 def clean_subtitle_text(text: str) -> str:
@@ -989,9 +1019,10 @@ def _polish_clips(key: str, model: str, clips: List[Dict[str, Any]], cast: Dict[
 
 def build_plan(key: str, model: str, title: str, source_srt: str, n_clips: int,
                length_rules: Sequence[str], language: str = "English",
-               source_script: str = "") -> Dict[str, Any]:
+               source_script: str = "", style_example: str = "") -> Dict[str, Any]:
     srt = compact_srt(source_srt)
     script = clean_script_text(source_script)
+    style_sample = clean_script_text(style_example, MAX_STYLE_EXAMPLE_CHARS)
     cues = parse_subtitle_cues(srt)
     if not cues:
         raise ProxyError("could not parse any subtitle timestamps; request was not rewritten")
@@ -1023,7 +1054,8 @@ def build_plan(key: str, model: str, title: str, source_srt: str, n_clips: int,
         language=language or "English",
         setting=cast.get("setting", "unclear"),
         cast=cast_text(cast),
-        script_context=script or "(No screenplay supplied; rely on subtitle windows only.)",
+        style_example=style_sample or "(No uploaded style example; follow the built-in narration rules.)",
+        script_context=script or "(No screenplay supplied; rely on target subtitle windows only.)",
         n_clips=n_clips,
         opening_rule=opening_rule,
         outro_rule=outro_rule,
@@ -1139,8 +1171,11 @@ class Handler(BaseHTTPRequestHandler):
                 response = forward_chat_request(body, key)
             else:
                 script, script_source = select_script_context(context.title, context.script)
-                log("movie request: %r; %d clips; %d subtitle characters; %d script characters (%s); language=%s" %
-                    (context.title, context.n_clips, len(context.srt), len(script), script_source, context.language))
+                style_example, style_filename = load_style_example()
+                style_source = style_filename or "none (built-in style rules only)"
+                log("movie request: %r; %d clips; %d subtitle characters; target script=%d chars (%s); style example=%d chars (%s); language=%s" %
+                    (context.title, context.n_clips, len(context.srt), len(script), script_source,
+                     len(style_example), style_source, context.language))
                 result = build_plan(
                     key=key,
                     model=model,
@@ -1150,6 +1185,7 @@ class Handler(BaseHTTPRequestHandler):
                     length_rules=context.length_rules,
                     language=context.language,
                     source_script=script,
+                    style_example=style_example,
                 )
                 response = {
                     "id": "chatcmpl-humanizer",
